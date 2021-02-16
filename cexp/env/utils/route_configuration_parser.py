@@ -2,6 +2,7 @@ from __future__ import print_function
 import math
 import json
 import os
+import sys
 from agents.navigation.local_planner import RoadOption
 import carla
 import xml.etree.ElementTree as ET
@@ -16,7 +17,7 @@ TRIGGER_ANGLE_THRESHOLD = 10  # Threshold to say if two angles can be considerin
 def parse_annotations_file(annotation_filename):
     """
     Return the annotations of which positions where the scenarios are going to happen.
-    :param annotation_filename: the filename for the anotations file
+    :param annotation_filename: the filename for the annotations file
     :return:
     """
 
@@ -29,8 +30,6 @@ def parse_annotations_file(annotation_filename):
         final_dict.update(town_dict)
 
     return final_dict  # the file has a current maps name that is an one element vec
-
-
 
 
 def parse_routes_file(route_filename):
@@ -51,11 +50,12 @@ def parse_routes_file(route_filename):
                                                  y=float(waypoint.attrib['y']),
                                                  z=float(waypoint.attrib['z'])))  # Waypoints is basically a list of XML nodes
 
-        list_route_descriptions.append({
-                                    'id': route_id,
-                                    'town_name': route_town,
-                                    'trajectory': waypoint_list
-                                     })
+        list_route_descriptions.append(
+            {
+                'id': route_id,
+                'town_name': route_town,
+                'trajectory': waypoint_list
+            })
 
     return list_route_descriptions
 
@@ -66,36 +66,11 @@ def parse_weather(exp_weather):
     :param exp_weather:
     :return:
     """
-    if exp_weather == 'ClearNoon':
-        return carla.WeatherParameters.ClearNoon
-    elif exp_weather == 'CloudyNoon':
-        return carla.WeatherParameters.CloudyNoon
-    elif exp_weather == 'WetNoon':
-        return carla.WeatherParameters.WetNoon
-    elif exp_weather == 'WetCloudyNoon':
-        return carla.WeatherParameters.WetCloudyNoon
-    elif exp_weather == 'MidRainyNoon':
-        return carla.WeatherParameters.MidRainyNoon
-    elif exp_weather == 'HardRainNoon':
-        return carla.WeatherParameters.HardRainNoon
-    elif exp_weather == 'SoftRainNoon':
-        return carla.WeatherParameters.SoftRainNoon
-    elif exp_weather == 'ClearSunset':
-        return carla.WeatherParameters.ClearSunset
-    elif exp_weather == 'CloudySunset':
-        return carla.WeatherParameters.CloudySunset
-    elif exp_weather == 'WetSunset':
-        return carla.WeatherParameters.WetSunset
-    elif exp_weather == 'WetCloudySunset':
-        return carla.WeatherParameters.WetCloudySunset
-    elif exp_weather == 'MidRainSunset':
-        return carla.WeatherParameters.MidRainSunset
-    elif exp_weather == 'HardRainSunset':
-        return carla.WeatherParameters.HardRainSunset
-    elif exp_weather == 'SoftRainSunset':
-        return carla.WeatherParameters.SoftRainSunset
-    else:
-        raise ValueError("Invalid weather on the configuration json file")
+    try:
+        return eval(f'carla.WeatherParameters.{exp_weather}')
+    except AttributeError:
+        print("Invalid weather on the configuration json file")
+        sys.exit(1)
 
 
 SECONDS_GIVEN_PER_METERS = 0.8  # TODO THIS IS A SERIOUS PARAMETER.
@@ -108,8 +83,8 @@ def estimate_route_timeout(route):
         route_length += dist
         prev_point = current_point
 
-
     return int(SECONDS_GIVEN_PER_METERS * route_length)
+
 
 def clean_route(route):
 
@@ -143,9 +118,8 @@ def clean_route(route):
 def parse_exp_vec(json_path, exp_vec):
     # TODO probably add the root path here on the definition.
     """
-
     :param exp_vec:
-    :param: json_path: the relative path where the json is located
+    :param json_path: the relative path where the json is located
     :return: A vector with elements ready to instance the experience.
     [{'name':  # The name of this specific
         {'route', # The route ( Trajectory of carla locations ()
@@ -161,7 +135,7 @@ def parse_exp_vec(json_path, exp_vec):
     full_loaded_route_files = {}
     # keep track also the loaded scenario files.
     # Read all the dicts
-    routes_root_path = json_path
+    routes_root_path = '/'+json_path
 
     for exp_name in exp_vec.keys():
         exp_dict = exp_vec[exp_name]
@@ -188,8 +162,8 @@ def parse_exp_vec(json_path, exp_vec):
         if 'file' in exp_dict['scenarios'] and exp_dict['scenarios']['file'] != "None":
             parse_annotations_file(exp_dict['scenarios']['file'])
 
-            #TODO scenario file  reading is not currently implemented
-            #possible_scenarios, existent_triggers = scan_route_for_scenarios(read_routes['trajectory'], scenarios_file)
+            # TODO scenario file  reading is not currently implemented
+            # possible_scenarios, existent_triggers = scan_route_for_scenarios(read_routes['trajectory'], scenarios_file)
             possible_scenarios = None
         else:
             possible_scenarios = exp_dict['scenarios']  # The scenarios are here directly

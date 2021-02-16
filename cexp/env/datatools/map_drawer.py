@@ -2,10 +2,10 @@ import carla
 import colorsys
 import argparse
 import os
+import matplotlib
+matplotlib.use('Agg') # Must be before importing matplotlib.pyplot or pylab!
 import matplotlib.pyplot as plt
-#from cexp.env.scenario_identification import identify_scenario
-
-
+from cexp.env.scenario_identification import identify_scenario, identify_scenario_2
 
 
 COLOR_BUTTER_0 = (252/ 255.0, 233/ 255.0, 79/ 255.0)
@@ -266,9 +266,9 @@ def draw_topology(carla_topology, index):
 
                 r = r.get_right_lane()
 
-        draw_lane( shoulder, SHOULDER_COLOR)
-        draw_lane( parking, PARKING_COLOR)
-        draw_lane( sidewalk, SIDEWALK_COLOR)
+        draw_lane(shoulder, SHOULDER_COLOR)
+        draw_lane(parking, PARKING_COLOR)
+        draw_lane(sidewalk, SIDEWALK_COLOR)
 
     draw_roads(set_waypoints)
 
@@ -288,6 +288,13 @@ def draw_point(location, result_color, size, alpha=None):
     pixel = world_to_pixel(location)
     circle = plt.Circle((pixel[0], pixel[1]), size, fc=result_color, alpha=alpha)
     plt.gca().add_patch(circle)
+
+def draw_line(location_start, location_end, result_color, size, alpha=None):
+
+    pixel_start = world_to_pixel(location_start)
+    pixel_end = world_to_pixel(location_end)
+    line = plt.Polygon([pixel_start, pixel_end], lw=size, edgecolor=result_color, alpha=alpha)
+    plt.gca().add_patch(line)
 
 def draw_text(content, location, result_color, size):
 
@@ -313,10 +320,10 @@ def draw_point_data(datapoint, color=None, direct_read=False, alpha=None):
         if direct_read:
             result_color = get_color(datapoint['scenario'])
         else:
-            result_color = get_color(identify_scenario(datapoint['measurements']['distance_intersection'],
-                                               datapoint['measurements']['distance_lead_vehicle'],
-                                               datapoint['measurements']['distance_crossing_walker'],
-                                               ))
+            # we want to debug the hazard stop cases
+            result_color = get_color_2(identify_scenario_2(datapoint['measurements']['is_red_tl_hazard'],
+                                                         datapoint['measurements']['is_vehicle_hazard'],
+                                                         datapoint['measurements']['is_pedestrian_hazard']))
     else:
         result_color = color
 
@@ -324,7 +331,6 @@ def draw_point_data(datapoint, color=None, direct_read=False, alpha=None):
 
     location = carla.Location(x=world_pos[0], y=world_pos[1], z=world_pos[2])
     draw_point(location, result_color, size, alpha)
-
 
 
 def get_N_HexCol(N=5):
@@ -373,6 +379,21 @@ def draw_walker(walker, alpha=None, color= (1,0,0)):
     draw_point(location, color, size, alpha)
 
 
+def draw_walker_move(walker_start, walker_end, alpha=0.5, color=(1,0,0)):
+    """
+    We draw a vector correponding to two walker positions
+    :param position:
+    :param color:
+    :return:
+    """
+
+    size = 1
+    world_pos_start = walker_start['position']
+    world_pos_end = walker_end['position']
+    location_start = carla.Location(x=world_pos_start[0], y=world_pos_start[1], z=world_pos_start[2])
+    location_end = carla.Location(x=world_pos_end[0], y=world_pos_end[1], z=world_pos_end[2])
+    draw_line(location_start, location_end, color, size, alpha)
+
 
 
 
@@ -398,6 +419,30 @@ def get_color(scenario):
     elif scenario == 'S6_pedestrian':
         return COLOR_PINK
 
+def get_color_2(scenario):
+    """
+    Based on the scenario we paint the trajectory with a given color.
+    :param scenario:
+    :return:
+    """
+
+    if scenario == 'S0_vehicle_pedestrian_redTL':
+        return COLOR_SCARLET_RED_0
+    elif scenario == 'S1_vehicle_pedestrian':
+        return COLOR_CHOCOLATE_0
+    elif scenario == 'S2_vehicle_redTL':
+        return COLOR_SKY_BLUE_0
+    elif scenario == 'S3_vehicle':
+        return COLOR_BUTTER_0
+    elif scenario == 'S4_pedestrian_redTL':
+        return COLOR_PLUM_0
+    elif scenario == 'S5_pedestrian':
+        return COLOR_ORANGE_0
+    elif scenario == 'S6_redTL':
+        return COLOR_PINK
+    elif scenario == 'S7_normal_driving':
+        return COLOR_BLACK
+
 
 def draw_route(route):
     draw_point(route[0][0].location, result_color=(0.0, 0.0, 1.0), size=24)
@@ -407,7 +452,7 @@ def draw_route(route):
     draw_point(route[-1][0].location, result_color=(0.0, 1.0, 0), size=24)
 
 
-def draw_trajectories(env_data, env_name, world, route, step_size=3, direct_read=False):
+def draw_trajectories(directory, env_data, env_name, world, route, step_size=3, direct_read=False):
 
     fig = plt.figure()
     plt.xlim(-200, 6000)
@@ -433,7 +478,7 @@ def draw_trajectories(env_data, env_name, world, route, step_size=3, direct_read
                 draw_point_data(batch[0][step], direct_read=direct_read)
                 step += step_size
 
-    fig.savefig(env_name + '_trajectory.png',
+    fig.savefig(os.path.join(directory, env_name + '_trajectory.png'),
                 orientation='landscape', bbox_inches='tight', dpi=1200)
 
 
@@ -481,7 +526,7 @@ def draw_opp_trajectories(env_data, env_name, world, step_size=3):
                     orientation='landscape', bbox_inches='tight', dpi=1200)
 
 
-def draw_pedestrians(env_data, env_name, world, step):
+def draw_pedestrians(agent_name, env_data, env_name, world, steps):
 
     """
         This is used on only one step to get a screen shot of how
@@ -494,19 +539,50 @@ def draw_pedestrians(env_data, env_name, world, step):
 
     if not os.path.exists('_walkers'):
         os.mkdir('_walkers')
-
+    # color pallet ! Maximum a few pedestrians
+    color_palet = [(1,0,0), (0,1,0), (0,0,1), (1,1,0), (0,1,1), (1,0,1), (0,0,0), (1,1,1)]
     fig = plt.figure()
-    plt.xlim(-200, 5000)
-    plt.ylim(-200, 5000)
+    plt.xlim(-400, 3000)
+    plt.ylim(500, 5000)
     # We draw the full map
     draw_map(world)
-    for exp in env_data:
+    count = 0
+    for i in range(len(steps)-1):
+        if len(steps) > 1:  # if we have more than 1 step we may connect the first and the last
+            for exp in env_data:
+                number_of_steps = len(exp[0][0][0]) -1
+                datapoint_start = exp[0][0][0][int(number_of_steps*steps[i])]
+                datapoint_end = exp[0][0][0][int(number_of_steps*steps[i+1])]
 
-        datapoint = exp[0][0][0][step]
-        for key, walker_info in datapoint['measurements']['walkers'].items():
-            draw_walker(walker_info)
+                for s_walker_info_key, e_walker_info_key in zip(datapoint_start['measurements']['walkers'].keys(),
+                                                        datapoint_end['measurements']['walkers'].keys()):
+                    # we chechck for teleport first if so we don't draw for this pedestrian
+                    # The max step for teleport is sent
+                    print ("keys ", s_walker_info_key, " ", e_walker_info_key)
+                    if s_walker_info_key != e_walker_info_key:
+                        continue
+                    #check_for_teleport(exp[0][0][0], s_walker_info_key, int(number_of_steps*steps[-1]))
+                    s_walker_info = datapoint_start['measurements']['walkers'][s_walker_info_key]
+                    e_walker_info = datapoint_end['measurements']['walkers'][e_walker_info_key]
+                    draw_walker_move(s_walker_info, e_walker_info, color=(0, 0, 0))
 
-    fig.savefig('_walkers/' + env_name + '_step_' + str(step) + '_trajectory.png',
+    for step in steps:
+        for exp in env_data:
+            number_of_steps = len(exp[0][0][0]) - 1
+            datapoint = exp[0][0][0][int(number_of_steps*step)]
+            for key, walker_info in datapoint['measurements']['walkers'].items():
+                draw_walker(walker_info, color=color_palet[count])
+        count += 1
+
+
+
+
+
+
+
+    fig.savefig('_walkers/'+ agent_name + '_' + env_name + '_step_' + ''.join(str(e)+'_'
+                                                                              for e in steps)
+                + '_trajectory.png',
                 orientation='landscape', bbox_inches='tight', dpi=1200)
 
 

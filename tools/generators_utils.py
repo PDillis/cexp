@@ -1,13 +1,11 @@
-
 import json
 import os
 import math
+
 import carla
 
 import cexp.env.utils.route_configuration_parser as parser
-
-
-from srunner.challenge.utils.route_manipulation import interpolate_trajectory
+from cexp.env.utils.general import interpolate_trajectory # TODO: srunner.challenge no longer exists
 
 
 def test_exp():
@@ -20,11 +18,8 @@ def test_exp():
     pass
 
 
-
-#TODO the fact that it does not use orientation may create bugs.
+# TODO the fact that it does not use orientation may create bugs.
 # TODO READ THE FULL TRANSFORM ON THE ROUTE READING
-
-
 def calculate_distance(location , waypoint1):
 
        dx = float(waypoint1['x']) - location.x

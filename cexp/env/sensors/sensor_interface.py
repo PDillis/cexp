@@ -9,7 +9,7 @@ from threading import Lock
 import carla
 
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
-from srunner.challenge.envs.scene_layout_sensors import SceneLayoutMeasurement, ObjectMeasurements, threaded
+from cexp.env.utils.srunner_scene_layout_sensors import SceneLayoutMeasurement, ObjectMeasurements, threaded  # TODO: srunner.challenge no longer exists
 
 
 class HDMapMeasurement(object):
@@ -143,7 +143,7 @@ class CallBack(object):
             self._parse_image_cb(data, self._tag, self._writer)
         elif isinstance(data, carla.LidarMeasurement):
             self._parse_lidar_cb(data, self._tag, self._writer)
-        elif isinstance(data, carla.GnssEvent):
+        elif isinstance(data, carla.GnssMeasurement):
             self._parse_gnss_cb(data, self._tag, self._writer)
         elif isinstance(data, CANBusMeasurement) or isinstance(data, HDMapMeasurement) \
                 or isinstance(data, SceneLayoutMeasurement) or isinstance(data, ObjectMeasurements):
@@ -154,7 +154,6 @@ class CallBack(object):
     # Parsing CARLA physical Sensors
 
     def _parse_image_cb(self, image, tag, writer):
-
         array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
 
         array = np.reshape(array, (image.height, image.width, 4))

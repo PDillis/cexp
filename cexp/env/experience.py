@@ -3,27 +3,27 @@ import py_trees
 import traceback
 import time
 import logging
-
+import shutil
+import os
+import glob
+import scipy.misc
 
 from srunner.scenariomanager.timer import GameTime, TimeOut
-from srunner.scenariomanager.carla_data_provider import CarlaActorPool, CarlaDataProvider
-from srunner.tools.config_parser import ActorConfigurationData, ScenarioConfiguration
+from srunner.scenariomanager.carla_data_provider import CarlaDataProvider  # TODO remove all CarlaActorPool for CarlaDataProvider >= 0.9.10
+from srunner.scenarioconfigs.scenario_configuration import ActorConfigurationData, ScenarioConfiguration
 from srunner.scenarios.master_scenario import MasterScenario
 from srunner.scenarios.background_activity import BackgroundActivity
-from srunner.scenarios.background_activity_walker import BackgroundActivityWalkers
-from srunner.challenge.utils.route_manipulation import interpolate_trajectory, _get_latlon_ref
-
 
 from agents.navigation.local_planner import RoadOption
-
 
 from cexp.env.scorer import record_route_statistics_default, get_current_completion, clean_route
 from cexp.env.datatools.data_writer import Writer
 from cexp.env.utils.route_configuration_parser import estimate_route_timeout
 from cexp.env.sensors.sensor_interface import CANBusSensor, CallBack, SensorInterface
 from cexp.env.utils.scenario_utils import number_class_translation
-from cexp.env.utils.general import get_forward_speed, convert_transform_to_location, \
-                                   distance_vehicle, convert_json_to_transform
+# TODO srunner.challenge no longer exists for >= 0.9.9
+from cexp.env.utils.general import convert_transform_to_location, \
+    distance_vehicle, convert_json_to_transform, interpolate_trajectory, _get_latlon_ref
 
 
 class Experience(object):
@@ -85,8 +85,8 @@ class Experience(object):
             # Load the world
             self._load_world()
             # Set the actor pool so the scenarios can prepare themselves when needed
-            CarlaActorPool.set_client(client)
-            CarlaActorPool.set_world(self.world)
+            CarlaDataProvider.set_client(client)
+            CarlaDataProvider.set_world(self.world)
             # Set the world for the global data provider
             CarlaDataProvider.set_world(self.world)
             # We get the lat lon ref that is important for the route
@@ -149,9 +149,6 @@ class Experience(object):
 
         return status
 
-    def get_sensor_data(self):
-
-        return self._sensor_interface.get_data()
 
     def tick_scenarios_control(self, controls):
         """
@@ -171,6 +168,7 @@ class Experience(object):
         return controls
 
     def apply_control(self, controls):
+        # Add the control to the ego agent controls.
 
         if self._save_data:
             self._environment_data['scenario_controls'] = controls
@@ -192,10 +190,9 @@ class Experience(object):
             # HERE we may adapt the npc to stop dist_scenario3
 
             self._environment_data['exp_measurements'] = {
-                'directions': directions,
-                'forward_speed': get_forward_speed(self._ego_actor),
-
+                'directions': directions
             }
+
 
         self._sync(self.world.tick())
 
@@ -205,11 +202,12 @@ class Experience(object):
         assert frame == self.world.get_snapshot().timestamp.frame
         self.frame = frame
 
-    def save_experience(self):
+    def save_experience(self, affordances):
 
         if self._save_data:
             self._sensor_interface.wait_sensors_written(self._writer)
-            self._writer.save_experience(self.world, self._environment_data)
+            self._writer.save_experience(self.world, self._environment_data, affordances)
+
 
     def is_running(self):
         """
@@ -232,8 +230,7 @@ class Experience(object):
         """
         # If ego_vehicle already exists, just update location
         # Otherwise spawn ego vehicle
-        self._ego_actor = CarlaActorPool.request_new_actor(self._vehicle_model, start_transform,
-                                                           hero=True)
+        self._ego_actor = CarlaDataProvider.request_new_actor(self._vehicle_model, start_transform)
 
         CarlaDataProvider.set_ego_vehicle_route( convert_transform_to_location(self._route))
         logging.debug("Created Ego Vehicle")
@@ -289,9 +286,10 @@ class Experience(object):
                                                 vehicle)
 
             # setup callback
-            if self._save_sensors:  # We have the options to not save sensors data
+            if self._save_sensors or self._exp_params['make_videos']:
+                # We have the options to not save sensors data unless it is to make video
                 sensor.listen(CallBack(sensor_spec['id'], sensor, self._sensor_interface,
-                                   writer=self._writer))
+                                       writer=self._writer))
             else:
                 sensor.listen(CallBack(sensor_spec['id'], sensor, self._sensor_interface,
                                        writer=None))
@@ -357,7 +355,7 @@ class Experience(object):
         master_scenario_configuration.trigger_point = self._ego_actor.get_transform()
         CarlaDataProvider.register_actor(self._ego_actor)
 
-        return MasterScenario(self.world, self._ego_actor, master_scenario_configuration,
+        return MasterScenario(self.world, [self._ego_actor], master_scenario_configuration,
                               timeout=timeout)
 
 
@@ -384,7 +382,7 @@ class Experience(object):
         settings = self.world.get_settings()
         settings.no_rendering_mode = self._exp_params['non_rendering_mode']
         settings.synchronous_mode = True
-        settings.fixed_delta_seconds = 0.05 # 20 FPS here is fixed
+        settings.fixed_delta_seconds = 0.05  # 20 FPS here is fixed WARNING
 
         self.world.set_weather(self._exp_params['weather_profile'])
         self.world.apply_settings(settings)
@@ -393,44 +391,66 @@ class Experience(object):
     # Todo make a scenario builder class
 
     def _build_background(self, background_definition, timeout):
-        scenario_configuration_vehicle = ScenarioConfiguration()
-        scenario_configuration_vehicle.route = None
-        scenario_configuration_vehicle.town = self._town_name
-        scenario_configuration_walker = ScenarioConfiguration()
-        scenario_configuration_walker.route = None
-        scenario_configuration_walker.town = self._town_name
-        # TODO The random seed should be set
+        """
+        Build background scenario. Adding pedestrians and vehicles wandering
+        around.
+        :param background_definition:
+        :param timeout:
+        :return:
+        """
+
+        scenario_configuration = ScenarioConfiguration()
+        scenario_configuration.route = None
+        scenario_configuration.town = self._town_name
+        # TODO The random seed should be set.
+        # Also the crossing factor should be specified on the benchmark itself.
         configuration_instances_vehicles = []
         configuration_instances_walkers = []
-        for key, numbers in background_definition.items():
-            if 'walker' not in key:
-                model = key
-                transform = carla.Transform()
-                autopilot = True
-                random = True
-                actor_configuration_instance = ActorConfigurationData(model, transform,
-                                                                      autopilot, random,
-                                                                      amount=background_definition[key])
-                configuration_instances_vehicles.append(actor_configuration_instance)
-            else:
-                model = 'controller.ai.walker'
-                transform = carla.Transform()
-                autopilot = True
-                random = True
-                actor_configuration_instance = ActorConfigurationData(model, transform,
-                                                                      autopilot, random,
-                                                                      amount=background_definition[
-                                                                          key])
-                configuration_instances_walkers.append(actor_configuration_instance)
+        # If there are walkers there should be cross factors otherwise it is 0
+        cross_factor = 0.0
 
-        scenario_configuration_vehicle.other_actors = configuration_instances_vehicles
-        scenario_configuration_walker.other_actors = configuration_instances_walkers
-        return BackgroundActivity(self.world, self._ego_actor, scenario_configuration_vehicle,
-                                  timeout=timeout, debug_mode=False), \
-            BackgroundActivityWalkers(self.world, self._ego_actor, scenario_configuration_vehicle,
-                       timeout=timeout, debug_mode=False)
+        if 'walker.*'  in background_definition:
 
-    # TODO adding also scenario
+            model = 'walker'
+            transform = carla.Transform()
+            autopilot = True
+            random_location = True
+            actor_configuration_instance = ActorConfigurationData(model, transform,
+                                                                  autopilot=autopilot,
+                                                                  random=random_location,
+                                                                  amount=int(
+                                                                      background_definition[
+                                                                          'walker.*']),
+                                                                  category='walker')
+            configuration_instances_walkers.append(actor_configuration_instance)
+
+            if "cross_factor" not in background_definition:
+                raise ValueError(" If there are walkers on the json file "
+                                 "background scenario there must also be a cross factor")
+
+            cross_factor = background_definition["cross_factor"]
+
+        if 'vehicle.*' in background_definition:
+            model = 'vehicle'
+            transform = carla.Transform()
+            autopilot = True
+            random_location = True
+            actor_configuration_instance = ActorConfigurationData(model, transform,
+                                                                  autopilot=autopilot,
+                                                                  random=random_location,
+                                                                  amount=int(background_definition[
+                                                                      "vehicle.*"]),
+                                                                  category='vehicle')
+            configuration_instances_vehicles.append(actor_configuration_instance)
+
+        scenario_configuration.other_actors = configuration_instances_vehicles + \
+                                              configuration_instances_walkers
+
+
+        return BackgroundActivity(self.world, self._ego_actor, scenario_configuration,
+                                  cross_factor=cross_factor,
+                                  timeout=timeout, debug_mode=False)
+
     def build_scenario_instances(self, scenario_definition_vec, timeout):
 
         """
@@ -443,17 +463,14 @@ class Experience(object):
         if scenario_definition_vec is None:
             return list_instanced_scenarios
 
-
         for scenario_name in scenario_definition_vec:
             # The BG activity encapsulates several scenarios that contain vehicles going arround
             if scenario_name == 'background_activity':  # BACKGROUND ACTIVITY SPECIAL CASE
 
                 background_definition = scenario_definition_vec[scenario_name]
-                background, background_walker = self._build_background(background_definition,
-                                                                       timeout)
+                background = self._build_background(background_definition, timeout)
 
                 list_instanced_scenarios.append(background)
-                list_instanced_scenarios.append(background_walker)
             else:
 
                 # Sample the scenarios to be used for this route instance.
@@ -497,7 +514,6 @@ class Experience(object):
 
         return self._route_statistics
 
-
     def record(self):
         self._route_statistics = record_route_statistics_default(self._master_scenario,
                                                                  self._exp_params['env_name'] + '_' +
@@ -509,6 +525,45 @@ class Experience(object):
             if self._exp_params['remove_wrong_data']:
                 if self._route_statistics['result'] == 'FAILURE':
                     self._clean_bad_dataset()
+
+        if self._exp_params['make_videos']:
+            delete_sensors = not self._exp_params['save_sensors']
+            self._writer.make_video(self._sensors_dict)
+            if delete_sensors:
+                self._writer.delete_sensors()
+
+        if self._exp_params['resize_images']:
+            data_path = os.path.join(os.environ["SRL_DATASET_PATH"], self._exp_params['package_name'])
+            save_path = os.path.join(os.environ["SRL_DATASET_PATH"], self._exp_params['package_name']+'_resized')
+            if not os.path.exists(save_path):
+                os.mkdir(save_path)
+            print('Resizing images in ', self._exp_params['env_name'])
+            metadata_file = glob.glob(os.path.join(data_path, self._exp_params['env_name'], '*.json'))
+            metadata_name = metadata_file[0].split('/')[-1]
+            if not os.path.exists(os.path.join(save_path, self._exp_params['env_name'])):
+                os.mkdir(os.path.join(save_path, self._exp_params['env_name']))
+            shutil.copy(metadata_file[0], os.path.join(os.path.join(save_path, self._exp_params['env_name']), metadata_name))
+            images_list = glob.glob(os.path.join(data_path, self._exp_params['env_name'], '0_Agent', '0', '*.png'))
+            files_list = glob.glob(os.path.join(data_path, self._exp_params['env_name'], '0_Agent', '0','measurements*.json'))
+            for image_path in images_list:
+                image_name = image_path.split('/')[-1]
+                image = scipy.misc.imread(image_path)
+                image = image[65:460, :, :]
+                image = scipy.misc.imresize(image, (88, 200))
+                saving_img_dir = os.path.join(save_path, self._exp_params['env_name'], '0_Agent', '0')
+                if not os.path.exists(saving_img_dir):
+                    os.makedirs(saving_img_dir)
+                scipy.misc.imsave(os.path.join(saving_img_dir, image_name), image)
+            for file_path in files_list:
+                file_name = file_path.split('/')[-1]
+                saving_files_dir = os.path.join(save_path, self._exp_params['env_name'], '0_Agent', '0')
+                if not os.path.exists(saving_files_dir):
+                    os.makedirs(saving_files_dir)
+                shutil.copy(file_path, os.path.join(saving_files_dir, file_name))
+            summary_file_path = os.path.join(data_path, self._exp_params['env_name'], '0_Agent', '0', 'summary.json')
+            file_name = summary_file_path.split('/')[-1]
+            shutil.copy(summary_file_path, os.path.join(saving_files_dir, file_name))
+            print('===> Resizing finished ', self._exp_params['env_name'])
 
 
     def cleanup(self, ego=True):
@@ -534,7 +589,6 @@ class Experience(object):
         self._sensor_interface.destroy()
         #  We stop the sensors first to avoid problems
 
-        CarlaActorPool.cleanup()
         CarlaDataProvider.cleanup()
 
         if ego and self._ego_actor is not None:

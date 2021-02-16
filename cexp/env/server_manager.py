@@ -19,7 +19,6 @@ def find_free_port():
         return s.getsockname()[1]
 
 
-
 class ServerManager(object):
     def __init__(self, opt_dict):
         log_level = logging.INFO
@@ -32,19 +31,19 @@ class ServerManager(object):
     def reset(self, host="127.0.0.1", port=2000):
         raise NotImplementedError("This function is to be implemented")
 
-    def wait_until_ready(self, wait=10.0):
+    @staticmethod
+    def wait_until_ready(wait=10.0):
         time.sleep(wait)
 
 
 class ServerManagerBinary(ServerManager):
     def __init__(self, opt_dict):
         super(ServerManagerBinary, self).__init__(opt_dict)
-
+        self._i = 0
         if 'CARLA_SERVER' in opt_dict:
             self._carla_server_binary = opt_dict['CARLA_SERVER']
         else:
             logging.error('CARLA_SERVER binary not provided!')
-
 
     def reset(self, host="127.0.0.1", port=2000):
         self._i = 0
@@ -54,8 +53,8 @@ class ServerManagerBinary(ServerManager):
             self._proc.kill()
             self._outs, self._errs = self._proc.communicate()
 
-        exec_command = "{} -carla-rpc-port={} -benchmark -fps=20 -quality-level=Epic >/dev/null".format(
-            self._carla_server_binary, port)
+        exec_command = f"{self._carla_server_binary} -carla-rpc-port={port} " \
+                       f"-benchmark -fps=20 -quality-level=Epic >/dev/null"
         print(exec_command)
         self._proc = subprocess.Popen(exec_command, shell=True)
 
@@ -94,11 +93,12 @@ class ServerManagerDocker(ServerManager):
         # TODO quality level to be set here
         my_env = os.environ.copy()
         my_env["NV_GPU"] = str(self._gpu)
+        # TODO: use Docker image for Carla 0.9.11
         logging.debug("Docker command %s" % ' '.join(['docker', 'run', '--name', self._docker_id,'--rm', '-d', '-p',
                                str(port)+'-'+str(port+2)+':'+str(port)+'-'+str(port+2),
                                '--runtime=nvidia', '-e', 'NVIDIA_VISIBLE_DEVICES='+str(self._gpu), self._docker_name,
                                '/bin/bash', 'CarlaUE4.sh', '-carla-port=' + str(port)]))
-        self._proc = subprocess.Popen(['docker', 'run', '--name', self._docker_id,'--rm', '-d', '-p',
+        self._proc = subprocess.Popen(['docker', 'run', '--name', self._docker_id, '--rm', '-d', '-p',
                                str(port)+'-'+str(port+2)+':'+str(port)+'-'+str(port+2),
                                '--runtime=nvidia', '-e', 'NVIDIA_VISIBLE_DEVICES='+str(self._gpu), self._docker_name,
                                '/bin/bash', 'CarlaUE4.sh', '-carla-port=' + str(port)], shell=False,
@@ -113,11 +113,9 @@ class ServerManagerDocker(ServerManager):
         time.sleep(170)
 
     def stop(self):
-        logging.debug("Killed a docker of id %s " % self._docker_id)
-        exec_command = ['docker', 'kill', '{}'.format(self._docker_id)]
+        logging.debug(f"Killed a docker of id {self._docker_id}")
+        exec_command = ['docker', 'kill', f'{self._docker_id}']
         self._proc = subprocess.Popen(exec_command)
-
-
 
 
 def start_test_server(port=6666, gpu=0, docker_name='carlalatest:latest'):
@@ -130,15 +128,12 @@ def start_test_server(port=6666, gpu=0, docker_name='carlalatest:latest'):
     docker_server.reset(port=port)
 
 
-
 def check_test_server(port):
-
     # Check if a server is open at some port
-
     try:
-        print ( " TRYING TO CONNECT ", port)
+        print(f"Trying to connect port {port}")
         client = carla.Client(host='localhost', port=port)
-        print ( "GETT VERSION ")
+        print("Success! Getting server version...")
         client.get_server_version()
         del client
         return True

@@ -6,9 +6,9 @@ import argparse
 
 from cexp.env.datatools.map_drawer import draw_map, draw_route
 from cexp.env.utils.route_configuration_parser import parse_routes_file
-from srunner.challenge.utils.route_manipulation import interpolate_trajectory
 
 from cexp.env.server_manager import start_test_server, check_test_server
+from cexp.env.utils.general import interpolate_trajectory # TODO: srunner.challenge no longer exists
 
 import carla
 

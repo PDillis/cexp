@@ -4,8 +4,7 @@ import os
 import shutil
 
 from cexp.env.experience import Experience
-from cexp.env.datatools.map_drawer import draw_pedestrians, draw_opp_trajectories, \
-                                          draw_trajectories
+from cexp.env.datatools.map_drawer import draw_pedestrians, draw_opp_trajectories, draw_trajectories
 import cexp.env.datatools.data_parser as parser
 
 # The scenarios should not have this triggering thing they can however. add some scenario editor ??
@@ -13,8 +12,9 @@ import cexp.env.datatools.data_parser as parser
 
 # define the exception for non existent data
 class NoDataGenerated(Exception):
-   """Base class for other exceptions"""
-   pass
+    """Base class for other exceptions"""
+    pass
+
 """
 The environment class encapsulates the experience all the scenarios that the policy is going to execute
 as well as a communication channel with the CARLA servers.
@@ -60,6 +60,8 @@ class Environment(object):
         # the name of the package this env is into
         self._package_name = env_params['package_name']
         logging.debug("Instantiated Environment %s" % self._environment_name)
+        # the trajectories can be written on a map. That is very helpful
+        self._save_trajectories = env_params['save_trajectories']
         # functions defined by the policy to compute the
         # adequate state and rewards based on CARLA data
         self.StateFunction = None
@@ -68,7 +70,7 @@ class Environment(object):
         self._env_exec_info = []
         # We set an agent to a previous executed agent.
         self._last_executing_agent = env_params['agent_name']
-
+        self.trajectories_directory = env_params['trajectories_directory']
 
     @staticmethod
     def check_for_executions(agent_name, package_name):
@@ -78,13 +80,13 @@ class Environment(object):
         """
 
         if not Environment.number_of_executions:
-            if "SRL_DATASET_PATH" not in os.environ:
-                raise ValueError("SRL_DATASET_PATH not defined,"
+            if "COIL_DATASET_PATH" not in os.environ:
+                raise ValueError("COIL_DATASET_PATH not defined,"
                                  " set the place where the dataset was saved before")
-            Environment.number_of_executions = \
-                parser.get_number_executions(agent_name, os.path.join(
-                                                            os.environ["SRL_DATASET_PATH"],
-                                                            package_name))
+            Environment.number_of_executions = parser.get_number_executions(agent_name,
+                                                                            os.path.join(
+                                                                                os.environ["COIL_DATASET_PATH"],
+                                                                                package_name))
 
     def __str__(self):
         return self._environment_name
@@ -112,6 +114,9 @@ class Environment(object):
             # TODO experimental
             #exp.cleanup()
             self._env_exec_info.append(exp.get_summary())
+
+        if self._save_trajectories:
+            self.draw_trajectory(self.trajectories_directory)
 
         if self._environment_name in Environment.number_of_executions:
             Environment.number_of_executions[self._environment_name] += 1
@@ -169,6 +174,8 @@ class Environment(object):
                 'env_number': Environment.number_of_executions[self._environment_name],
                 'exp_number': i,
                 'save_data': self._save_data,
+                'make_videos': self._env_params['make_videos'],
+                'resize_images': self._env_params['resize_images'],
                 'save_sensors': self._env_params['save_sensors'],
                 'save_opponents': self._env_params['save_opponents'],
                 'save_walkers': self._env_params['save_walkers'],
@@ -199,8 +206,8 @@ class Environment(object):
         # where the data is already collected. That can go
         # Directly to the json where the data is collected.
         # This is the package that is where the data is saved.
-        # It is always save in the SRL path
-        root_path = os.path.join(os.environ["SRL_DATASET_PATH"], self._package_name,
+        # It is always save in the COIL_DATASET_PATH
+        root_path = os.path.join(os.environ["COIL_DATASET_PATH"], self._package_name,
                                  self._environment_name)
         # If the metadata does not exist the environment does not have a reference data.
         if not os.path.exists(os.path.join(root_path, 'metadata.json')):
@@ -209,7 +216,6 @@ class Environment(object):
         # Read the metadata telling the sensors that exist
         with open(os.path.join(root_path, 'metadata.json'), 'r') as f:
             metadata_dict = json.loads(f.read())
-
         full_episode_data_dict = parser.parse_environment(root_path, metadata_dict)
 
         return full_episode_data_dict
@@ -219,19 +225,13 @@ class Environment(object):
         """
             Remove all data from this specific environment
         """
-        root_path = os.path.join(os.environ["SRL_DATASET_PATH"], self._package_name,
+        root_path = os.path.join(os.environ["COIL_DATASET_PATH"], self._package_name,
                                  self._environment_name)
         # If the metadata does not exist the environment does not have a reference data.
         if not os.path.exists(os.path.join(root_path, 'metadata.json')):
             raise NoDataGenerated("The data is not generated yet")
 
         shutil.rmtree(root_path)
-
-    #def get_path(self):
-    #    # TODO do we keep this one ?
-
-    #    return os.path.join(os.environ["SRL_DATASET_PATH"], self._package_name, self._environment_name)
-
 
     def _is_running(self):
         """
@@ -243,7 +243,7 @@ class Environment(object):
         # if no exp is running then the environment is already done
         return False
 
-    def step(self, control_vec):
+    def run_step(self, control_vec, affordances):
         """
         Run an step on the simulation using the agent control
         :param control_vec:
@@ -263,7 +263,7 @@ class Environment(object):
             control = exp.tick_scenarios_control(control)
             exp.apply_control(control)
             exp.tick_world()
-            exp.save_experience()
+            exp.save_experience(affordances[i])
 
         return self.StateFunction(self._exp_list), \
                     self.RewardFunction(self._exp_list)
@@ -282,29 +282,33 @@ class Environment(object):
         # If the environment is still running there is no summary yet
         if self._is_running():
             info.update({'status': 'Running'})
-
         else:
             # If it is not running we basically try to record what is happening.
             self._record()
             info.update({'status': 'Finished'})
             info['summary'] = self._env_exec_info[0]
-        # Todo for now it is working for batch 0
 
         return info
 
-    """
-        DEBUG FUNCTIONS 
-    
-    """
 
-    def draw_pedestrians(self, step):
-        draw_pedestrians(self.get_data(), self._environment_name,
-                         self._exp_list[0].world, step)
+    def draw_pedestrians(self, steps):
+        draw_pedestrians(self._last_executing_agent, self.get_data(), self._environment_name,
+                         self._exp_list[0].world, steps)
 
-    def draw_opp_trajectories(self):
+    def draw_opp_trajectories(self, directory):
         pass
 
+    def draw_trajectory(self, directory):
+        # Draw the trajectory made on the last instance of this enviroment (experience)
+        if not os.path.exists(directory):
+            os.mkdir(directory)
 
+        draw_trajectories(directory,
+                          self.get_data(),
+                          self._last_executing_agent + '_' + self._package_name + '_' + self._environment_name,
+                          self._exp_list[0].world,
+                          self._exp_list[0]._route,
+                          direct_read=self._env_params['direct_read'])
 
 
 

@@ -11,11 +11,12 @@ from matplotlib.patches import Circle
 
 from cexp.env.server_manager import start_test_server, check_test_server
 from cexp.env.datatools.map_drawer import draw_point, draw_map, draw_text
+from cexp.env.utils.general import interpolate_trajectory # TODO: srunner.challenge no longer exists
+
 import carla
 from PIL import Image
 from tools.converter import Converter
 
-from srunner.challenge.utils.route_manipulation import interpolate_trajectory
 
 """"
 This script generates routes based on the compitation of the start and end scenarios.

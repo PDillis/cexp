@@ -1,0 +1,91 @@
+{
+    "envs": {
+        "ClearNoon_navigation_route00000": {
+            "repetitions": 1,
+            "route": {
+                "file": "corl2017/Town01_navigation.xml",
+                "id": 0
+            },
+            "scenarios": {
+                "background_activity": {
+                    "cross_factor": 0.01,
+                    "vehicle.*": 80,
+                    "walker.*": 300
+                }
+            },
+            "town_name": "Town01",
+            "vehicle_model": "vehicle.lincoln.mkz2017",
+            "weather_profile": "ClearNoon"
+        },
+        "ClearNoon_navigation_route00001": {
+            "repetitions": 1,
+            "route": {
+                "file": "corl2017/Town01_navigation.xml",
+                "id": 1
+            },
+            "scenarios": {
+                "background_activity": {
+                    "cross_factor": 0.01,
+                    "vehicle.*": 80,
+                    "walker.*": 300
+                }
+            },
+            "town_name": "Town01",
+            "vehicle_model": "vehicle.lincoln.mkz2017",
+            "weather_profile": "ClearNoon"
+        },
+        "ClearNoon_navigation_route00002": {
+            "repetitions": 1,
+            "route": {
+                "file": "corl2017/Town01_navigation.xml",
+                "id": 2
+            },
+            "scenarios": {
+                "background_activity": {
+                    "cross_factor": 0.01,
+                    "vehicle.*": 80,
+                    "walker.*": 300
+                }
+            },
+            "town_name": "Town01",
+            "vehicle_model": "vehicle.lincoln.mkz2017",
+            "weather_profile": "ClearNoon"
+        },
+        "ClearNoon_navigation_route00003": {
+            "repetitions": 1,
+            "route": {
+                "file": "corl2017/Town01_navigation.xml",
+                "id": 3
+            },
+            "scenarios": {
+                "background_activity": {
+                    "cross_factor": 0.01,
+                    "vehicle.*": 80,
+                    "walker.*": 300
+                }
+            },
+            "town_name": "Town01",
+            "vehicle_model": "vehicle.lincoln.mkz2017",
+            "weather_profile": "ClearNoon"
+        },
+        "ClearNoon_navigation_route00004": {
+            "repetitions": 1,
+            "route": {
+                "file": "corl2017/Town01_navigation.xml",
+                "id": 4
+            },
+            "scenarios": {
+                "background_activity": {
+                    "cross_factor": 0.01,
+                    "vehicle.*": 80,
+                    "walker.*": 300
+                }
+            },
+            "town_name": "Town01",
+            "vehicle_model": "vehicle.lincoln.mkz2017",
+            "weather_profile": "ClearNoon"
+        }
+        
+    },
+    "package_name": "sample_dataset"
+}
