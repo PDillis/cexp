@@ -1,0 +1,73 @@
+{
+    "envs": {
+        "Container_ClearNoon": {
+            "repetitions": 1,
+            "route": {
+                "file": "corl2017/Town01_navigation.xml",
+                "id": 0
+            },
+            "scenarios": {
+                "background_activity": {
+                    "cross_factor": 0.1,
+                    "vehicle.*": 100,
+                    "walker.*": 150
+                }
+            },
+            "town_name": "Town01",
+            "vehicle_model": "vehicle.lincoln.mkz2017",
+            "weather_profile": "ClearNoon"
+        },
+        "Container_CloudyNoon": {
+            "repetitions": 1,
+            "route": {
+                "file": "corl2017/Town01_navigation.xml",
+                "id": 1
+            },
+            "scenarios": {
+                "background_activity": {
+                    "cross_factor": 0.1,
+                    "vehicle.*": 100,
+                    "walker.*": 150
+                }
+            },
+            "town_name": "Town01",
+            "vehicle_model": "vehicle.lincoln.mkz2017",
+            "weather_profile": "ClearNoon"
+        },
+        "Container_WetNoon": {
+            "repetitions": 1,
+            "route": {
+                "file": "corl2017/Town01_navigation.xml",
+                "id": 2
+            },
+            "scenarios": {
+                "background_activity": {
+                    "cross_factor": 0.1,
+                    "vehicle.*": 100,
+                    "walker.*": 150
+                }
+            },
+            "town_name": "Town01",
+            "vehicle_model": "vehicle.lincoln.mkz2017",
+            "weather_profile": "ClearNoon"
+        },
+        "Container_WetCloudyNoon": {
+            "repetitions": 1,
+            "route": {
+                "file": "corl2017/Town01_navigation.xml",
+                "id": 3
+            },
+            "scenarios": {
+                "background_activity": {
+                    "cross_factor": 0.1,
+                    "vehicle.*": 100,
+                    "walker.*": 150
+                }
+            },
+            "town_name": "Town01",
+            "vehicle_model": "vehicle.lincoln.mkz2017",
+            "weather_profile": "ClearNoon"
+        }
+    },
+        "package_name": "20h_dataset_Low"
+}
