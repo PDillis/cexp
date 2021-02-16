@@ -3,7 +3,7 @@
         "Container_ClearNoon": {
             "repetitions": 1,
             "route": {
-                "file": "corl2017/Town01_navigation.xml",
+                "file": "../corl2017/Town01_navigation.xml",
                 "id": 0
             },
             "scenarios": {
@@ -20,7 +20,7 @@
         "Container_CloudyNoon": {
             "repetitions": 1,
             "route": {
-                "file": "corl2017/Town01_navigation.xml",
+                "file": "../corl2017/Town01_navigation.xml",
                 "id": 1
             },
             "scenarios": {
@@ -37,7 +37,7 @@
         "Container_WetNoon": {
             "repetitions": 1,
             "route": {
-                "file": "corl2017/Town01_navigation.xml",
+                "file": "../corl2017/Town01_navigation.xml",
                 "id": 2
             },
             "scenarios": {
@@ -54,7 +54,7 @@
         "Container_WetCloudyNoon": {
             "repetitions": 1,
             "route": {
-                "file": "corl2017/Town01_navigation.xml",
+                "file": "../corl2017/Town01_navigation.xml",
                 "id": 3
             },
             "scenarios": {
